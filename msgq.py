@@ -35,7 +35,7 @@ class QueueName:
         return QueueName(queue_name)
 
 
-class TaskQueue:
+class MessageQueue:
     def __init__(self, path: str, name: QueueName):
         self.db_path = f'{path}/{name}.db'
         with sqlite3.connect(self.db_path) as conn:
