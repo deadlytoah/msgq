@@ -1,8 +1,7 @@
 ------------------------------ MODULE Message ------------------------------
 EXTENDS FiniteSets, Integers
 
-CONSTANTS Payloads   \* Represents the set of message payloads.
-        , IDs        \* The set of unique identifiers.
+CONSTANTS IDs        \* The set of unique identifiers.
 
 VARIABLES Arrived   \* The set of messages that arrived at destination
         , Ready     \* The queue of messages ready for process
@@ -12,7 +11,7 @@ VARIABLES Arrived   \* The set of messages that arrived at destination
         , Processing\* The queue of messages being processed
 vars == <<Arrived, Ready, Success, Failed, Deleted, Processing>>
 
-Messages == IDs \X Payloads
+Messages == IDs
 
 AllMessages == Ready \cup Success \cup Failed \cup Deleted \cup Processing
     (***********************************************************************)
@@ -26,14 +25,15 @@ TypeOK == /\ Arrived \subseteq Messages
           /\ Deleted \subseteq Messages
           /\ Processing \subseteq Messages
 
-GetIDs(messages) == {m[1] : m \in messages}
+GetID(m) ==
+    (***********************************************************************)
+    (* Returns the ID of a message.                                        *)
+    (***********************************************************************)
+    m
+
+GetIDs(messages) == messages
     (***********************************************************************)
     (* Returns the set of IDs from a set of messages.                      *)
-    (***********************************************************************)
-
-GetPayloads(messages) == {m[2] : m \in messages}
-    (***********************************************************************)
-    (* Returns the set of payloads from a set of messages.                 *)
     (***********************************************************************)
 
 Invariants ==
@@ -52,7 +52,7 @@ ReceiveMessage ==
     (* Receives an incoming message and pushes it into the message queue.  *)
     (***********************************************************************)
     /\ \E m \in Messages:
-        /\ m[1] \notin GetIDs(AllMessages)
+        /\ GetID(m) \notin GetIDs(AllMessages)
         /\ Ready' = Ready \cup {m}
         /\ UNCHANGED <<Arrived, Success, Failed, Deleted, Processing>>
 
@@ -133,5 +133,5 @@ Next == \/ ReceiveMessage
 Spec == Init /\ [][Next]_vars
 =============================================================================
 \* Modification History
-\* Last modified Wed Apr 12 18:53:10 KST 2023 by hcs
+\* Last modified Thu Apr 13 17:51:06 KST 2023 by hcs
 \* Created Wed Apr 12 09:43:11 KST 2023 by hcs
