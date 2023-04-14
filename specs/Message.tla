@@ -9,7 +9,7 @@ VARIABLES Delivered \* The set of delivered messages.
         , Success   \* The set of messages marked successful
         , Failed    \* The set of messages marked as failed
         , Deleted   \* The set of deleted messages
-        , Processing\* The queue of messages being processed
+        , Processing\* The message that is being processed
 vars == <<Delivered, Ready, Success, Failed, Deleted, Processing>>
 
 AllMessages == Ready \cup Success \cup Failed \cup Deleted \cup Processing
@@ -26,12 +26,22 @@ TypeOK == /\ Delivered \subseteq Messages
 
 Invariants ==
     /\ Delivered \subseteq Success \cup Failed \cup Deleted \cup Processing
-    \* Messages we are trying to or have failed to send may or may not have
-    \* arrived at the destination.
+    (***********************************************************************)
+    (* Messages we are trying to or have failed to send may or may not have*)
+    (* arrived at the destination.                                         *)
+    (***********************************************************************)
     /\ \A m \in Ready: m \notin Delivered
-    \* But if a message is in Ready, it has definitely not arrived.
+    (***********************************************************************)
+    (* But if a message is in Ready, it has definitely not arrived.        *)
+    (***********************************************************************)
     /\ Success \subseteq Delivered
-    \* Every successful messages will have arrived at the destination.
+    (***********************************************************************)
+    (* Every successful messages will have arrived at the destination.     *)
+    (***********************************************************************)
+    /\ Cardinality(Processing) <= 1
+    (***********************************************************************)
+    (* Processes one message at a time.                                    *)
+    (***********************************************************************)
 -----------------------------------------------------------------------------
 ReceiveMessage ==
     (***********************************************************************)
@@ -46,6 +56,7 @@ ProcessMessage ==
     (***********************************************************************)
     (* Processes a message from the queue and marks it as successful.      *)
     (***********************************************************************)
+    /\ Processing = {}   \* Processes one message at a time.
     /\ \E m \in Ready:
         /\ Ready' = Ready \ {m}
         /\ Processing' = Processing \cup {m}
@@ -119,5 +130,5 @@ Next == \/ ReceiveMessage
 Spec == Init /\ [][Next]_vars
 =============================================================================
 \* Modification History
-\* Last modified Fri Apr 14 11:01:41 KST 2023 by hcs
+\* Last modified Fri Apr 14 11:14:06 KST 2023 by hcs
 \* Created Wed Apr 12 09:43:11 KST 2023 by hcs
