@@ -7,12 +7,12 @@ CONSTANTS Messages  \* The set of unique messages.  They are unique by the hash
 VARIABLES Delivered \* The set of delivered messages.
         , Queued    \* The queue of messages ready for delivery.
         , Archived  \* The set of messages succeeded and archived.
-        , Failed    \* The set of messages marked as given up.
+        , Abandoned \* The set of messages marked as given up.
         , Deleted   \* The set of deleted messages
         , Processing\* The message that is being processed
-vars == <<Delivered, Queued, Archived, Failed, Deleted, Processing>>
+vars == <<Delivered, Queued, Archived, Abandoned, Deleted, Processing>>
 
-AllMessages == Queued \cup Archived \cup Failed \cup Deleted \cup Processing
+AllMessages == Queued \cup Archived \cup Abandoned \cup Deleted \cup Processing
     (***********************************************************************)
     (* This is the set of all messages that are in the system.             *)
     (***********************************************************************)
@@ -20,19 +20,15 @@ AllMessages == Queued \cup Archived \cup Failed \cup Deleted \cup Processing
 TypeOK == /\ Delivered \subseteq Messages
           /\ Queued \subseteq Messages
           /\ Archived \subseteq Messages
-          /\ Failed \subseteq Messages
+          /\ Abandoned \subseteq Messages
           /\ Deleted \subseteq Messages
           /\ Processing \subseteq Messages
 
 Invariants ==
-    /\ Delivered \subseteq Archived \cup Failed \cup Deleted \cup Processing
+    /\ Delivered \subseteq AllMessages
     (***********************************************************************)
     (* Messages we are trying to or have failed to send may or may not have*)
     (* arrived at the destination.                                         *)
-    (***********************************************************************)
-    /\ \A m \in Queued: m \notin Delivered
-    (***********************************************************************)
-    (* But if a message is in Ready, it has definitely not arrived.        *)
     (***********************************************************************)
     /\ Archived \subseteq Delivered
     (***********************************************************************)
@@ -50,7 +46,7 @@ ReceiveMessage ==
     /\ \E m \in Messages:
         /\ m \notin AllMessages
         /\ Queued' = Queued \cup {m}
-        /\ UNCHANGED <<Delivered, Archived, Failed, Deleted, Processing>>
+        /\ UNCHANGED <<Delivered, Archived, Abandoned, Deleted, Processing>>
 
 ProcessMessage ==
     (***********************************************************************)
@@ -64,47 +60,58 @@ ProcessMessage ==
     /\ \E m \in Queued:
         /\ Queued' = Queued \ {m}
         /\ Processing' = Processing \cup {m}
-        /\ UNCHANGED <<Delivered, Archived, Failed, Deleted>>
+        /\ UNCHANGED <<Delivered, Archived, Abandoned, Deleted>>
 
-MessageDeliveredWithSuccess ==
+DeliverMessage ==
     (***********************************************************************)
-    (* Represents an operation where a message arrives at the destination  *)
-    (* and the message queue is aware of that.                             *)
+    (* Delivery of the message was successful.                             *)
     (***********************************************************************)
     /\ \E m \in Processing:
         /\ Processing' = Processing \ {m}
         /\ Archived' = Archived \cup {m}
         /\ Delivered' = Delivered \cup {m}
-        /\ UNCHANGED <<Queued, Failed, Deleted>>
+    /\ UNCHANGED <<Queued, Abandoned, Deleted>>
 
-MessageDeliveredWithFailure ==
+FailSendingMessage ==
     (***********************************************************************)
-    (* A message arrives at the destination, after which the message queue *)
-    (* fails.                                                              *)
+    (* Failed to send the message.                                         *)
     (***********************************************************************)
     /\ \E m \in Processing:
         /\ Processing' = Processing \ {m}
-        /\ Failed' = Failed \cup {m}
-        /\ Delivered' = Delivered \cup {m}
-        /\ UNCHANGED <<Queued, Archived, Deleted>>
+        /\ Queued' = Queued \cup {m}
+    /\ UNCHANGED <<Delivered, Abandoned, Archived, Deleted>>
 
-MessageDelivered ==
+FailReceivingResponse ==
     (***********************************************************************)
-    (* Represents an operation where a message arrives at the destination, *)
-    (* but the message queue may or may not be aware of that.              *)
+    (* A message arrives at the destination, but the response doesn't      *)
+    (* arrive.                                                             *)
     (***********************************************************************)
-    \/ MessageDeliveredWithSuccess
-    \/ MessageDeliveredWithFailure
+    /\ \E m \in Processing:
+        /\ Processing' = Processing \ {m}
+        /\ Queued' = Queued \cup {m}
+        /\ Delivered' = Delivered \cup {m}
+    /\ UNCHANGED <<Archived, Abandoned, Deleted>>
+
+GiveUpMessage ==
+    (***********************************************************************)
+    (* The queue controller gives up on the message because it keeps on    *)
+    (* failing.                                                            *)
+    (***********************************************************************)
+    /\ \E m \in Processing:
+        /\ Processing' = Processing \ {m}
+        /\ Abandoned' = Abandoned \cup {m}
+    /\ UNCHANGED <<Delivered, Queued, Archived, Deleted>>
 
 FailMessage ==
     (***********************************************************************)
-    (* The attempt to send the message failed and the message did not reach*)
-    (* the destination.                                                    *)
+    (* The attempt to send the queued message failed. There will be a few  *)
+    (* cases to cover. If the message keeps failing, the queue controller  *)
+    (* shifts its status to Abandoned. Abandoned messages usually need     *)
+    (* manual inspection of engineers.                                     *)
     (***********************************************************************)
-    /\ \E m \in Processing:
-        /\ Processing' = Processing \ {m}
-        /\ Failed' = Failed \cup {m}
-        /\ UNCHANGED <<Delivered, Queued, Archived, Deleted>>
+    \/ FailSendingMessage
+    \/ FailReceivingResponse
+    \/ GiveUpMessage
 
 CancelMessage ==
     (***********************************************************************)
@@ -113,18 +120,18 @@ CancelMessage ==
     /\ \E m \in Queued:
         /\ Queued' = Queued \ {m}
         /\ Deleted' = Deleted \cup {m}
-        /\ UNCHANGED <<Delivered, Archived, Failed, Processing>>
+        /\ UNCHANGED <<Delivered, Archived, Abandoned, Processing>>
 -----------------------------------------------------------------------------
 Init == /\ Delivered = {}
         /\ Queued = {}
         /\ Archived = {}
-        /\ Failed = {}
+        /\ Abandoned = {}
         /\ Deleted = {}
         /\ Processing = {}
 
 Next == \/ ReceiveMessage
         \/ ProcessMessage
-        \/ MessageDelivered
+        \/ DeliverMessage
         \/ FailMessage
         \/ CancelMessage
         \/ UNCHANGED vars
@@ -132,5 +139,5 @@ Next == \/ ReceiveMessage
 Spec == Init /\ [][Next]_vars
 =============================================================================
 \* Modification History
-\* Last modified Fri Apr 14 11:29:54 KST 2023 by hcs
+\* Last modified Fri Apr 14 21:40:52 KST 2023 by hcs
 \* Created Wed Apr 12 09:43:11 KST 2023 by hcs
