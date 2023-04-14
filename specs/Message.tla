@@ -1,7 +1,8 @@
 ------------------------------ MODULE Message ------------------------------
 EXTENDS FiniteSets, Integers
 
-CONSTANTS IDs        \* The set of unique identifiers.
+CONSTANTS Messages  \* The set of unique messages.  They are unique by the hash
+                    \* of their contents plus the time of arrival.
 
 VARIABLES Delivered \* The set of delivered messages.
         , Ready     \* The queue of messages ready for process
@@ -10,8 +11,6 @@ VARIABLES Delivered \* The set of delivered messages.
         , Deleted   \* The set of deleted messages
         , Processing\* The queue of messages being processed
 vars == <<Delivered, Ready, Success, Failed, Deleted, Processing>>
-
-Messages == IDs
 
 AllMessages == Ready \cup Success \cup Failed \cup Deleted \cup Processing
     (***********************************************************************)
@@ -25,17 +24,6 @@ TypeOK == /\ Delivered \subseteq Messages
           /\ Deleted \subseteq Messages
           /\ Processing \subseteq Messages
 
-GetID(m) ==
-    (***********************************************************************)
-    (* Returns the ID of a message.                                        *)
-    (***********************************************************************)
-    m
-
-GetIDs(messages) == messages
-    (***********************************************************************)
-    (* Returns the set of IDs from a set of messages.                      *)
-    (***********************************************************************)
-
 Invariants ==
     /\ Delivered \subseteq Success \cup Failed \cup Deleted \cup Processing
     \* Messages we are trying to or have failed to send may or may not have
@@ -44,15 +32,13 @@ Invariants ==
     \* But if a message is in Ready, it has definitely not arrived.
     /\ Success \subseteq Delivered
     \* Every successful messages will have arrived at the destination.
-    /\ Cardinality(GetIDs(AllMessages)) = Cardinality(AllMessages)
-    \* We do not give a message an ID that is in use.
 -----------------------------------------------------------------------------
 ReceiveMessage ==
     (***********************************************************************)
     (* Receives an incoming message and pushes it into the message queue.  *)
     (***********************************************************************)
     /\ \E m \in Messages:
-        /\ GetID(m) \notin GetIDs(AllMessages)
+        /\ m \notin AllMessages
         /\ Ready' = Ready \cup {m}
         /\ UNCHANGED <<Delivered, Success, Failed, Deleted, Processing>>
 
@@ -133,5 +119,5 @@ Next == \/ ReceiveMessage
 Spec == Init /\ [][Next]_vars
 =============================================================================
 \* Modification History
-\* Last modified Thu Apr 13 18:05:52 KST 2023 by hcs
+\* Last modified Fri Apr 14 11:01:41 KST 2023 by hcs
 \* Created Wed Apr 12 09:43:11 KST 2023 by hcs
