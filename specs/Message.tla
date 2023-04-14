@@ -8,11 +8,11 @@ VARIABLES Delivered \* The set of delivered messages.
         , Queued    \* The queue of messages ready for delivery.
         , Archived  \* The set of messages succeeded and archived.
         , Abandoned \* The set of messages marked as given up.
-        , Deleted   \* The set of deleted messages
+        , Cancelled \* The set of cancelled messages
         , Processing\* The message that is being processed
-vars == <<Delivered, Queued, Archived, Abandoned, Deleted, Processing>>
+vars == <<Delivered, Queued, Archived, Abandoned, Cancelled, Processing>>
 
-AllMessages == Queued \cup Archived \cup Abandoned \cup Deleted \cup Processing
+AllMessages == Queued \cup Archived \cup Abandoned \cup Cancelled \cup Processing
     (***********************************************************************)
     (* This is the set of all messages that are in the system.             *)
     (***********************************************************************)
@@ -21,7 +21,7 @@ TypeOK == /\ Delivered \subseteq Messages
           /\ Queued \subseteq Messages
           /\ Archived \subseteq Messages
           /\ Abandoned \subseteq Messages
-          /\ Deleted \subseteq Messages
+          /\ Cancelled \subseteq Messages
           /\ Processing \subseteq Messages
 
 Invariants ==
@@ -46,7 +46,7 @@ ReceiveMessage ==
     /\ \E m \in Messages:
         /\ m \notin AllMessages
         /\ Queued' = Queued \cup {m}
-        /\ UNCHANGED <<Delivered, Archived, Abandoned, Deleted, Processing>>
+        /\ UNCHANGED <<Delivered, Archived, Abandoned, Cancelled, Processing>>
 
 ProcessMessage ==
     (***********************************************************************)
@@ -60,7 +60,7 @@ ProcessMessage ==
     /\ \E m \in Queued:
         /\ Queued' = Queued \ {m}
         /\ Processing' = Processing \cup {m}
-        /\ UNCHANGED <<Delivered, Archived, Abandoned, Deleted>>
+        /\ UNCHANGED <<Delivered, Archived, Abandoned, Cancelled>>
 
 DeliverMessage ==
     (***********************************************************************)
@@ -70,7 +70,7 @@ DeliverMessage ==
         /\ Processing' = Processing \ {m}
         /\ Archived' = Archived \cup {m}
         /\ Delivered' = Delivered \cup {m}
-    /\ UNCHANGED <<Queued, Abandoned, Deleted>>
+    /\ UNCHANGED <<Queued, Abandoned, Cancelled>>
 
 FailSendingMessage ==
     (***********************************************************************)
@@ -79,7 +79,7 @@ FailSendingMessage ==
     /\ \E m \in Processing:
         /\ Processing' = Processing \ {m}
         /\ Queued' = Queued \cup {m}
-    /\ UNCHANGED <<Delivered, Abandoned, Archived, Deleted>>
+    /\ UNCHANGED <<Delivered, Abandoned, Archived, Cancelled>>
 
 FailReceivingResponse ==
     (***********************************************************************)
@@ -90,7 +90,7 @@ FailReceivingResponse ==
         /\ Processing' = Processing \ {m}
         /\ Queued' = Queued \cup {m}
         /\ Delivered' = Delivered \cup {m}
-    /\ UNCHANGED <<Archived, Abandoned, Deleted>>
+    /\ UNCHANGED <<Archived, Abandoned, Cancelled>>
 
 GiveUpMessage ==
     (***********************************************************************)
@@ -100,7 +100,7 @@ GiveUpMessage ==
     /\ \E m \in Processing:
         /\ Processing' = Processing \ {m}
         /\ Abandoned' = Abandoned \cup {m}
-    /\ UNCHANGED <<Delivered, Queued, Archived, Deleted>>
+    /\ UNCHANGED <<Delivered, Queued, Archived, Cancelled>>
 
 FailMessage ==
     (***********************************************************************)
@@ -119,14 +119,14 @@ CancelMessage ==
     (***********************************************************************)
     /\ \E m \in Queued:
         /\ Queued' = Queued \ {m}
-        /\ Deleted' = Deleted \cup {m}
+        /\ Cancelled' = Cancelled \cup {m}
         /\ UNCHANGED <<Delivered, Archived, Abandoned, Processing>>
 -----------------------------------------------------------------------------
 Init == /\ Delivered = {}
         /\ Queued = {}
         /\ Archived = {}
         /\ Abandoned = {}
-        /\ Deleted = {}
+        /\ Cancelled = {}
         /\ Processing = {}
 
 Next == \/ ReceiveMessage
@@ -139,5 +139,5 @@ Next == \/ ReceiveMessage
 Spec == Init /\ [][Next]_vars
 =============================================================================
 \* Modification History
-\* Last modified Fri Apr 14 21:40:52 KST 2023 by hcs
+\* Last modified Fri Apr 14 21:47:00 KST 2023 by hcs
 \* Created Wed Apr 12 09:43:11 KST 2023 by hcs
