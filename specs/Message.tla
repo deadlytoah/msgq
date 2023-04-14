@@ -54,7 +54,11 @@ ReceiveMessage ==
 
 ProcessMessage ==
     (***********************************************************************)
-    (* Processes a message from the queue and marks it as successful.      *)
+    (* The queue controller marks a message as Processing because it is    *)
+    (* processing it now. Processing a message involves shifting it to the *)
+    (* Processing status. The queue controller then sends it to the        *)
+    (* destination and waits for the response. The Processing status of a  *)
+    (* message ends when the response arrives.                             *)
     (***********************************************************************)
     /\ Processing = {}   \* Processes one message at a time.
     /\ \E m \in Queued:
@@ -102,16 +106,14 @@ FailMessage ==
         /\ Failed' = Failed \cup {m}
         /\ UNCHANGED <<Delivered, Queued, Archived, Deleted>>
 
-DeleteMessage ==
+CancelMessage ==
     (***********************************************************************)
-    (* Deletes a message from the queue.                                   *)
+    (* Cancels a message in the queue.                                     *)
     (***********************************************************************)
-    /\ \E m \in Queued \cup Failed \cup Processing:
+    /\ \E m \in Queued:
         /\ Queued' = Queued \ {m}
-        /\ Failed' = Failed \ {m}
-        /\ Processing' = Processing \ {m}
         /\ Deleted' = Deleted \cup {m}
-        /\ UNCHANGED <<Delivered, Archived>>
+        /\ UNCHANGED <<Delivered, Archived, Failed, Processing>>
 -----------------------------------------------------------------------------
 Init == /\ Delivered = {}
         /\ Queued = {}
@@ -124,11 +126,11 @@ Next == \/ ReceiveMessage
         \/ ProcessMessage
         \/ MessageDelivered
         \/ FailMessage
-        \/ DeleteMessage
+        \/ CancelMessage
         \/ UNCHANGED vars
 
 Spec == Init /\ [][Next]_vars
 =============================================================================
 \* Modification History
-\* Last modified Fri Apr 14 11:27:16 KST 2023 by hcs
+\* Last modified Fri Apr 14 11:29:54 KST 2023 by hcs
 \* Created Wed Apr 12 09:43:11 KST 2023 by hcs
