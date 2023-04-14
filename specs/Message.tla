@@ -4,12 +4,12 @@ EXTENDS FiniteSets, Integers
 CONSTANTS Messages  \* The set of unique messages.  They are unique by the hash
                     \* of their contents plus the time of arrival.
 
-VARIABLES Delivered \* The set of delivered messages.
-        , Queued    \* The queue of messages ready for delivery.
-        , Archived  \* The set of messages succeeded and archived.
-        , Abandoned \* The set of messages marked as given up.
-        , Cancelled \* The set of cancelled messages
-        , Processing\* The message that is being processed
+VARIABLES Delivered,    \* The set of delivered messages.
+          Queued,       \* The queue of messages ready for delivery.
+          Archived,     \* The set of messages succeeded and archived.
+          Abandoned,    \* The set of messages marked as given up.
+          Cancelled,    \* The set of cancelled messages
+          Processing    \* The message that is being processed
 vars == <<Delivered, Queued, Archived, Abandoned, Cancelled, Processing>>
 
 AllMessages == Queued \cup Archived \cup Abandoned \cup Cancelled \cup Processing
