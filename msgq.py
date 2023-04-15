@@ -1,4 +1,7 @@
+import hashlib
 import sqlite3
+from datetime import datetime
+from enum import Enum
 from typing import Any, Callable, Dict, Optional
 
 
@@ -26,6 +29,16 @@ class QueueName:
 
     @staticmethod
     def validated(queue_name: str) -> 'QueueName':
+        """
+        Validates the given string as the name of a queue.  Checks the
+        string against characters in VALID_CHARACTERS.
+
+        :param queue_name: The name of the queue to validate.
+        :type queue_name: str
+        :return: A QueueName instance.
+        :rtype: QueueName
+        :raises ValueError: The queue name is invalid.
+        """
         for character in queue_name:
             if character not in QueueName.VALID_CHARACTERS:
                 raise ValueError(
@@ -35,28 +48,100 @@ class QueueName:
         return QueueName(queue_name)
 
 
+class ChecksumID:
+    """
+    Represents a checksum ID.
+
+    :param when_pushed: The timestamp when the message was pushed.
+    :type when_pushed: datetime
+    :param payload: The message payload.
+    :type payload: bytes
+    """
+
+    def __init__(self, when_pushed: datetime, payload: bytes):
+        self.sha256 = hashlib.sha256(b"", usedforsecurity=False)
+        self.sha256.update(when_pushed.isoformat().encode('utf-8'))
+        self.sha256.update(payload)
+
+    def __str__(self) -> str:
+        """
+        Returns the checksum in hex digest.
+
+        Returns:
+            A string containing the checksum ID.
+        """
+        return self.sha256.hexdigest()
+
+
+class Status(Enum):
+    """
+    Represents the status of a message in the queue.
+    """
+    QUEUED = 1
+    PROCESSING = 2
+    ARCHIVED = 3
+    ABANDONED = 4
+    CANCELLED = 5
+
+    @staticmethod
+    def create_table(conn: sqlite3.Connection) -> None:
+        """
+        Creates the status table in the database.
+
+        :param conn: The database connection.
+        :type conn: sqlite3.Connection
+        """
+        conn.execute('''CREATE TABLE IF NOT EXISTS status
+                        (id INTEGER PRIMARY KEY,
+                         name TEXT NOT NULL)''')
+        for status in Status:
+            conn.execute(
+                '''INSERT OR IGNORE INTO status (id, name)
+                   VALUES (?, ?)''', (status.value, status.name))
+
+
 class MessageQueue:
-    def __init__(self, path: str, name: QueueName):
+    """
+    Represents a persistent message queue.
+
+    :param path: The path to the directory where the queue database will
+                 be stored.
+    :type path: str
+    :param name: The name of the queue.
+    :type name: QueueName
+    """
+
+    def __init__(self: 'MessageQueue', path: str, name: QueueName):
         self.db_path = f'{path}/{name}.db'
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute('''CREATE TABLE IF NOT EXISTS tasks
-                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                             function TEXT NOT NULL,
-                             args TEXT,
-                             kwargs TEXT,
-                             status TEXT NOT NULL,
-                             last_run INTEGER,
-                             num_retries INTEGER DEFAULT 0,
-                             last_result TEXT)''')
+            Status.create_table(conn)
+            conn.execute('''CREATE TABLE IF NOT EXISTS msgq
+                            (csid TEXT PRIMARY KEY,
+                             payload BLOB NOT NULL,
+                             status_id INTEGER NOT NULL,
+                             when_pushed DATETIME NOT NULL,
+                             when_deleted DATETIME,
+                             when_delivered DATETIME,
+                             when_error DATETIME,
+                             num_attempts INTEGER NOT NULL DEFAULT 0,
+                             last_error TEXT,
+                             FOREIGN KEY (status_id) REFERENCES status(id))''')
 
-    def add_task(self, func: Callable, args: Optional[tuple] = None,
-                 kwargs: Optional[Dict[str, Any]] = None):
+    def push(self: 'MessageQueue', payload: bytes) -> None:
+        """
+        Pushes a message onto the queue.
+
+        :param payload: The message payload.
+        :type payload: bytes
+        """
         with sqlite3.connect(self.db_path) as conn:
+            when_pushed = datetime.now()
+            csid = ChecksumID(when_pushed, payload)
             cursor = conn.cursor()
-            cursor.execute('''INSERT INTO tasks
-                              (function, args, kwargs, status)
-                              VALUES (?, ?, ?, ?)''',
-                           (func.__name__, str(args), str(kwargs), 'queued'))
+            cursor.execute(
+                '''INSERT INTO msgq (csid, payload, status_id, when_pushed)
+                          VALUES (?, ?, ?, ?)''',
+                (str(csid), payload, Status.QUEUED.value, when_pushed))
 
     def get_queued_task(self) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
