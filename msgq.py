@@ -4,6 +4,29 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, Optional
 
+from pyservice import ServiceException
+
+
+class MsgqErrorCode(Enum):
+    """
+    Represents the error codes for the message queue service.
+    """
+    DATABASE_CONSTRAINT = 'ERROR_DATABASE_CONSTRAINT'
+
+
+class DatabaseConstraintException(ServiceException):
+    """
+    Indicates a database constraint has been violated.
+
+    :param inner: The inner exception.
+    :type inner: Exception
+    """
+
+    def __init__(self, inner: Exception):
+        super(DatabaseConstraintException, self).__init__(MsgqErrorCode.DATABASE_CONSTRAINT,
+                                                          f'database constraint violated: {inner}')
+        self.inner = inner
+
 
 class QueueName:
     """
@@ -131,15 +154,20 @@ class MessageQueue:
 
         :param payload: The message payload.
         :type payload: bytes
+        :raises DatabaseConstraintException: The message already exists in
+                                             the queue.
         """
         with sqlite3.connect(self.db_path) as conn:
             when_pushed = datetime.now()
             csid = ChecksumID(payload)
             cursor = conn.cursor()
-            cursor.execute(
-                '''INSERT INTO msgq (csid, payload, status_id, when_pushed)
-                          VALUES (?, ?, ?, ?)''',
-                (str(csid), payload, Status.QUEUED.value, when_pushed))
+            try:
+                cursor.execute(
+                    '''INSERT INTO msgq (csid, payload, status_id, when_pushed)
+                            VALUES (?, ?, ?, ?)''',
+                    (str(csid), payload, Status.QUEUED.value, when_pushed))
+            except sqlite3.IntegrityError as e:
+                raise DatabaseConstraintException(e)
 
     def get_queued_task(self) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:

@@ -28,7 +28,7 @@ class QueueService(pyservice.Service):
                 Timeout.DEFAULT,
                 'A list containing the message payload.',
                 'An empty list.',
-                'None'
+                'ERROR_DATABASE_CONSTRAINT: a message with the given payload is already in the queue.'
             ))
 
     def __push_impl(self, payload: bytes) -> None:
