@@ -52,16 +52,14 @@ class ChecksumID:
     """
     Represents a checksum ID.
 
-    :param when_pushed: The timestamp when the message was pushed.
-    :type when_pushed: datetime
     :param payload: The message payload.
     :type payload: bytes
     """
 
-    def __init__(self, when_pushed: datetime, payload: bytes):
-        self.sha256 = hashlib.sha256(b"", usedforsecurity=False)
-        self.sha256.update(when_pushed.isoformat().encode('utf-8'))
-        self.sha256.update(payload)
+    def __init__(self, payload: bytes):
+        sha256 = hashlib.sha256(b"", usedforsecurity=False)
+        sha256.update(payload)
+        self.sha256_digest = sha256.hexdigest()
 
     def __str__(self) -> str:
         """
@@ -70,7 +68,7 @@ class ChecksumID:
         Returns:
             A string containing the checksum ID.
         """
-        return self.sha256.hexdigest()
+        return self.sha256_digest
 
 
 class Status(Enum):
@@ -136,7 +134,7 @@ class MessageQueue:
         """
         with sqlite3.connect(self.db_path) as conn:
             when_pushed = datetime.now()
-            csid = ChecksumID(when_pushed, payload)
+            csid = ChecksumID(payload)
             cursor = conn.cursor()
             cursor.execute(
                 '''INSERT INTO msgq (csid, payload, status_id, when_pushed)
