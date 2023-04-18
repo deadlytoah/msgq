@@ -1,17 +1,31 @@
 ----------------------------- MODULE Processing -----------------------------
+(***************************************************************************)
+(* The specification describes two asynchronous tasks working together.    *)
+(* The first task is a message queue that accepts messages and pushes them *)
+(* into a queue. The second task is a message processor that processes the *)
+(* messages in the queue. The message processor must wait for a message    *)
+(* in the queue before it can process it.                                  *)
+(*                                                                         *)
+(* The specification shows the operations in WaitForMessage must be atomic.*)
+(* WaitForMessage first checks if the queue is empty in the database. If   *)
+(* the queue is empty, it shifts the message processor into WAIT status.   *)
+(***************************************************************************)
+
 CONSTANT
     Messages    \* Messages pushed in the queue.
 
 VARIABLE
     Channel,    \* Channel for tasks to communicate with each other.
-    Queue,      \* Message queue
-    Complete    \* Place for messages that have completed processing.
-vars == <<Channel, Queue, Complete>>
+    Queue,      \* Message queue sits in the DBMS.
+    Complete,   \* Place for messages that have completed processing.
+    DoNotify    \* Flag to indicate that a notification should be sent.
+vars == <<Channel, Queue, Complete, DoNotify>>
 
 TypeOK ==
     /\ Channel \in {"PROCESS", "WAIT"}
     /\ Queue \subseteq Messages
     /\ Complete \subseteq Messages
+    /\ DoNotify \in BOOLEAN
 
 Invariants ==
     (***********************************************************************)
@@ -28,29 +42,30 @@ PushMessage ==
     (***********************************************************************)
     (* Push a message into the queue.                                      *)
     (***********************************************************************)
-    \E m \in Messages \ (Queue \cup Complete):
+    /\ DoNotify = FALSE     \* Not reentrant
+    /\ \E m \in Messages \ (Queue \cup Complete):
+        /\ DoNotify' = TRUE
         /\ Queue' = Queue \cup {m}
         /\ UNCHANGED <<Channel, Complete>>
+
+NotifyForProcessing ==
+    (***********************************************************************)
+    (* Notify the channel that there are messages to process.              *)
+    (***********************************************************************)
+    /\ DoNotify = TRUE
+    /\ Channel' = "PROCESS"
+    /\ DoNotify' = FALSE
+    /\ UNCHANGED <<Queue, Complete>>
 
 ProcessMessage ==
     (***********************************************************************)
     (* Process a message from the queue.                                   *)
     (***********************************************************************)
     /\ Channel = "PROCESS"
-    /\ Queue /= {}
     /\ \E m \in Queue:
         /\ Queue' = Queue \ {m}
         /\ Complete' = Complete \cup {m}
-    /\ UNCHANGED <<Channel>>
-
-NotifyForProcessing ==
-    (***********************************************************************)
-    (* Notify the channel that there are messages to process.              *)
-    (***********************************************************************)
-    /\ Channel = "WAIT"
-    /\ Queue /= {}
-    /\ Channel' = "PROCESS"
-    /\ UNCHANGED <<Queue, Complete>>
+    /\ UNCHANGED <<Channel, DoNotify>>
 
 WaitForMessage ==
     (***********************************************************************)
@@ -58,18 +73,20 @@ WaitForMessage ==
     (***********************************************************************)
     /\ Queue = {}
     /\ Channel' = "WAIT"
-    /\ UNCHANGED <<Queue, Complete>>
+    /\ UNCHANGED <<Queue, Complete, DoNotify>>
+
+MessageQueueNext == PushMessage \/ NotifyForProcessing
+MessageProcessorNext == ProcessMessage \/ WaitForMessage
 
 Init ==
     /\ Channel = "PROCESS"
     /\ Queue \in SUBSET(Messages)
     /\ Complete = {}
+    /\ DoNotify = FALSE
 
 Next ==
-    \/ PushMessage
-    \/ ProcessMessage
-    \/ NotifyForProcessing
-    \/ WaitForMessage
+    \/ MessageQueueNext
+    \/ MessageProcessorNext
 
 FullyProcessed ==
     (***********************************************************************)
@@ -82,5 +99,5 @@ FullyProcessed ==
 Spec == Init /\ [][Next]_vars /\ []<>FullyProcessed
 =============================================================================
 \* Modification History
-\* Last modified Tue Apr 18 12:19:12 KST 2023 by hcs
+\* Last modified Wed Apr 19 00:01:55 KST 2023 by hcs
 \* Created Mon Apr 17 22:38:51 KST 2023 by hcs
