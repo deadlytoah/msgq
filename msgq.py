@@ -2,7 +2,7 @@ import hashlib
 import sqlite3
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, Optional
+from typing import Optional
 
 from pyservice import ServiceException
 
@@ -73,16 +73,26 @@ class QueueName:
 
 class ChecksumID:
     """
-    Represents a checksum ID.
+    Represents a checksum ID.  You can create an instance of this class
+    by passing in the message payload, or by passing in the hex digest
+    of the checksum.
 
     :param payload: The message payload.
     :type payload: bytes
+    :param hexdigest: The hex digest of the checksum.
+    :type hexdigest: str
+    :raises ValueError: Either payload or hexdigest must be specified, but not both.
     """
 
-    def __init__(self, payload: bytes):
-        sha256 = hashlib.sha256(b"", usedforsecurity=False)
-        sha256.update(payload)
-        self.sha256_digest = sha256.hexdigest()
+    def __init__(self, payload: Optional[bytes] = None, hexdigest: Optional[str] = None):
+        if payload is not None and hexdigest is None:
+            sha256 = hashlib.sha256(payload, usedforsecurity=False)
+            self.sha256_digest = sha256.hexdigest()
+        elif payload is None and hexdigest is not None:
+            self.sha256_digest = hexdigest
+        else:
+            raise ValueError(
+                'Either payload or hexdigest must be specified, but not both.')
 
     def __str__(self) -> str:
         """
@@ -169,24 +179,39 @@ class MessageQueue:
             except sqlite3.IntegrityError as e:
                 raise DatabaseConstraintException(e)
 
-    def get_queued_task(self) -> Optional[Dict[str, Any]]:
+    def process(self) -> Optional[bytes]:
+        """
+        Returns the next message to process.  If there is already a
+        message being processed, it will return that message.  If there
+        are no messages being processed, it will return the next
+        message in the queue.  If there are no messages in the queue,
+        it will return None.
+
+        :return: The next message to process or None if there are no
+                 messages in the queue.
+        :rtype: Optional[bytes]
+        """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                '''SELECT * FROM tasks WHERE status=? ORDER BY id ASC LIMIT 1''', ('queued',))
-            task = cursor.fetchone()
-            if task is not None:
-                task_dict = {
-                    'id': task[0],
-                    'function': task[1],
-                    'args': eval(task[2]),
-                    'kwargs': eval(task[3]),
-                    'status': task[4],
-                    'last_run': task[5],
-                    'num_retries': task[6],
-                    'last_result': task[7]
-                }
-                return task_dict
+                '''SELECT * FROM
+                        (SELECT csid, payload, status_id FROM msgq
+                            WHERE when_deleted IS NULL AND status_id=?
+                            ORDER BY when_pushed)
+                   UNION
+                   SELECT csid, payload, status_id FROM
+                        (SELECT csid, payload, status_id, when_pushed, when_error
+                            FROM msgq WHERE when_deleted IS NULL AND status_id=? ORDER BY
+                            CASE WHEN when_error IS NULL THEN when_pushed ELSE when_error END)''',
+                (Status.PROCESSING.value, Status.QUEUED.value))
+            row = cursor.fetchone()
+            if row is not None:
+                if row[2] != Status.PROCESSING.value:
+                    MessageQueue.__update_status(
+                        conn, ChecksumID(hexdigest=row[0]), Status.PROCESSING)
+                    return row[1]
+                else:
+                    return row[1]
             else:
                 return None
 
@@ -209,3 +234,8 @@ class MessageQueue:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 '''UPDATE tasks SET last_result=? WHERE id=?''', (result, task_id))
+
+    @staticmethod
+    def __update_status(conn: sqlite3.Connection, csid: ChecksumID, status: Status) -> None:
+        conn.execute(
+            '''UPDATE msgq SET status_id=? WHERE when_deleted IS NULL AND csid=?''', (status.value, str(csid)))
