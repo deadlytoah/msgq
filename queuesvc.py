@@ -7,7 +7,7 @@ from typing import List, Optional
 
 import pyservice
 from msgq import ChecksumID, MessageQueue, QueueName
-from pyservice import Metadata, Timeout
+from pyservice.metadata import Argument, Arguments, Metadata, Timeout
 
 
 class QueueService(pyservice.Service):
@@ -27,7 +27,7 @@ class QueueService(pyservice.Service):
                 'push',
                 'Pushes a message onto the queue.',
                 Timeout.DEFAULT,
-                'A list containing the message payload.',
+                Arguments(Argument('payload', 'The message payload to push.')),
                 'An empty list.',
                 'ERROR_DATABASE_CONSTRAINT: a message with the given payload is already in the queue.'
             ))
@@ -38,7 +38,7 @@ class QueueService(pyservice.Service):
                 'process',
                 'Returns the next message to process in the queue.',
                 Timeout.DEFAULT,
-                'None',
+                Arguments.none(),
                 '''Returns ID and payload of the next message to process,
                    or an empty list if the queue is empty.''',
                 'None',
@@ -50,7 +50,7 @@ class QueueService(pyservice.Service):
                 'archive',
                 'Archives the given message in the queue that is in PROCESSING status.',
                 Timeout.DEFAULT,
-                'Message ID',
+                Arguments(Argument('message ID', 'The ID of the message to archive.')),
                 'None',
                 'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
             ))
