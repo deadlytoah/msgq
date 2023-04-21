@@ -12,6 +12,7 @@ class MsgqErrorCode(Enum):
     Represents the error codes for the message queue service.
     """
     DATABASE_CONSTRAINT = 'ERROR_DATABASE_CONSTRAINT'
+    MSGQ_STATE = 'ERROR_MSGQ_STATE'
 
 
 class DatabaseConstraintException(ServiceException):
@@ -26,6 +27,16 @@ class DatabaseConstraintException(ServiceException):
         super(DatabaseConstraintException, self).__init__(MsgqErrorCode.DATABASE_CONSTRAINT,
                                                           f'database constraint violated: {inner}')
         self.inner = inner
+
+
+class StateException(ServiceException):
+    """
+    Indicates the state of the queue is invalid.
+
+    """
+
+    def __init__(self, message: str):
+        super(StateException, self).__init__(MsgqErrorCode.MSGQ_STATE, message)
 
 
 class QueueName:
@@ -179,7 +190,7 @@ class MessageQueue:
             except sqlite3.IntegrityError as e:
                 raise DatabaseConstraintException(e)
 
-    def process(self) -> Optional[bytes]:
+    def process(self) -> Optional[tuple[ChecksumID, bytes]]:
         """
         Returns the next message to process.  If there is already a
         message being processed, it will return that message.  If there
@@ -187,9 +198,10 @@ class MessageQueue:
         message in the queue.  If there are no messages in the queue,
         it will return None.
 
-        :return: The next message to process or None if there are no
-                 messages in the queue.
-        :rtype: Optional[bytes]
+        :return: A tuple containing the checksum ID and payload of the
+                 next message to process, or None if there are no
+                 messages to process.
+        :rtype: Optional[tuple[ChecksumID, bytes]]
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -206,14 +218,34 @@ class MessageQueue:
                 (Status.PROCESSING.value, Status.QUEUED.value))
             row = cursor.fetchone()
             if row is not None:
+                csid = ChecksumID(hexdigest=row[0])
                 if row[2] != Status.PROCESSING.value:
                     MessageQueue.__update_status(
-                        conn, ChecksumID(hexdigest=row[0]), Status.PROCESSING)
-                    return row[1]
+                        conn, csid, Status.PROCESSING)
+                    return (csid, row[1])
                 else:
-                    return row[1]
+                    return (csid, row[1])
             else:
                 return None
+
+    def archive(self, csid: ChecksumID) -> None:
+        """
+        Archives a message.  The queue controller has succeeded delivering
+        this message.
+
+        :param csid: The ID of the message to archive.
+        :type csid: ChecksumID
+        :raises StateException: No message is in the PROCESSING status.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE msgq SET status_id=? WHERE when_deleted IS NULL AND csid=? AND status_id=?',
+                           (Status.ARCHIVED.value, str(csid), Status.PROCESSING.value))
+            if cursor.rowcount < 1:
+                raise StateException(
+                    f'No message with ID [{csid}] found in PROCESSING status.')
+            else:
+                pass
 
     def update_task_status(self, task_id: int, status: str):
         with sqlite3.connect(self.db_path) as conn:

@@ -6,7 +6,7 @@ from os import environ, makedirs
 from typing import List, Optional
 
 import pyservice
-from msgq import MessageQueue, QueueName
+from msgq import ChecksumID, MessageQueue, QueueName
 from pyservice import Metadata, Timeout
 
 
@@ -39,14 +39,26 @@ class QueueService(pyservice.Service):
                 'Returns the next message to process in the queue.',
                 Timeout.DEFAULT,
                 'None',
-                'The payload of the next message to process.',
+                '''Returns ID and payload of the next message to process,
+                   or an empty list if the queue is empty.''',
                 'None',
+            ))
+        self.register_command(
+            'archive',
+            self.archive,
+            Metadata(
+                'archive',
+                'Archives the given message in the queue that is in PROCESSING status.',
+                Timeout.DEFAULT,
+                'Message ID',
+                'None',
+                'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
             ))
 
     def __push_impl(self, payload: bytes) -> None:
         self.message_queue.push(payload)
 
-    def __process_impl(self) -> Optional[bytes]:
+    def __process_impl(self) -> Optional[tuple[ChecksumID, bytes]]:
         return self.message_queue.process()
 
     def name(self) -> str:
@@ -81,18 +93,37 @@ class QueueService(pyservice.Service):
 
     def process(self, _arguments: List[str]) -> List[str]:
         """
-        Returns the next message to process in the queue, or None if the
-        queue is empty.
+        Returns ID and payload of the next message to process in the queue,
+        or None if the queue is empty.
 
-        :return: The payload of the next message to process, or None if the
-                 queue is empty.
+        :return: A list containing ID and payload of the next message to
+                 process, or None if the queue is empty.
         :rtype: List[str]
         """
-        payload = self.__process_impl()
-        if payload is not None:
-            return [payload.decode('utf-8')]
+        result = self.__process_impl()
+        if result is not None:
+            (csid, payload) = result
+            return [str(csid), payload.decode('utf-8')]
         else:
             return []
+
+    def archive(self, arguments: List[str]) -> List[str]:
+        """
+        Archives the given message in PROCESSING status in the queue.
+
+        :param args: An array containing the message ID.
+        :type args: List[str]
+        :return: An empty list.
+        :rtype: List[str]
+        :raises ValueError: The message ID argument is missing.
+        :raises MsgQStateException: There was no message in PROCESSING status.
+        """
+        if len(arguments) == 1:
+            csid = ChecksumID(hexdigest=arguments[0])
+            self.message_queue.archive(csid)
+            return []
+        else:
+            raise ValueError('Must provide a message ID as the argument.')
 
 
 async def main(path: str, queue_name: str, port: Optional[int] = None) -> None:

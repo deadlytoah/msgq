@@ -54,7 +54,8 @@ ProcessMessage ==
     (* processing it now. Processing a message involves shifting it to the *)
     (* Processing status. The queue controller then sends it to the        *)
     (* destination and waits for the response. The Processing status of a  *)
-    (* message ends when the response arrives.                             *)
+    (* message ends when the response arrives, or the queue controller     *)
+    (* times out the message.                                              *)
     (***********************************************************************)
     /\ Processing = {}   \* Processes one message at a time.
     /\ \E m \in Queued:
