@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import os
 import sys
@@ -59,21 +60,23 @@ class QueueService(pyservice.Service):
         return []
 
 
-async def main(path: str, queue_name: str) -> None:
+async def main(path: str, queue_name: str, port: Optional[int] = None) -> None:
     name = QueueName.validated(queue_name)
     message_queue = MessageQueue(path, name)
 
     # Start the service
     queue_service = QueueService(name, message_queue)
-    await queue_service.run(port=36369)
+    await queue_service.run(port=port)
 
 
 if __name__ == '__main__':
-    try:
-        path = f'{environ["HOME"]}/.local/queuesvc'
-        if not os.path.exists(path):
-            makedirs(path)
-        asyncio.run(main(path, sys.argv[1]))
-    except IndexError:
-        print('Must provide a queue name.', file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Persistent Queue Service')
+    parser.add_argument('queue_name', type=str, help='The name of the queue.')
+    parser.add_argument('-p', '--port', type=int,
+                        help='The port to listen on.')
+    args = parser.parse_args()
+
+    path = f'{environ["HOME"]}/.local/queuesvc'
+    if not os.path.exists(path):
+        makedirs(path)
+    asyncio.run(main(path, args.queue_name, port=args.port))
