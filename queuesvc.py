@@ -67,6 +67,18 @@ class QueueService(pyservice.Service):
                 'None',
                 'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
             ))
+        self.register_command(
+            'cancel',
+            self.cancel,
+            Metadata(
+                'cancel',
+                'Cancels the given message in the queue that is in QUEUED status.',
+                Timeout.DEFAULT,
+                Arguments(
+                    Argument('message ID', 'The ID of the message to cancel.')),
+                'None',
+                'ERROR_MSGQ_STATE: There was no message in QUEUED status.',
+            ))
 
     def __push_impl(self, payload: bytes) -> None:
         self.message_queue.push(payload)
@@ -76,6 +88,9 @@ class QueueService(pyservice.Service):
 
     def __fail_impl(self, csid: ChecksumID, reason: str) -> None:
         self.message_queue.fail(csid, reason)
+
+    def __cancel_impl(self, csid: ChecksumID) -> None:
+        self.message_queue.cancel(csid)
 
     def name(self) -> str:
         """
@@ -161,6 +176,24 @@ class QueueService(pyservice.Service):
         else:
             raise ValueError('''Must provide a message ID and the reason for
                                 the failure as the argument.''')
+
+    def cancel(self, arguments: List[str]) -> List[str]:
+        """
+        Cancels the given message in QUEUED status in the queue.
+
+        :param args: An array containing the message ID.
+        :type args: List[str]
+        :return: An empty list.
+        :rtype: List[str]
+        :raises ValueError: The message ID argument is missing.
+        :raises MsgQStateException: There was no message in QUEUED status.
+        """
+        if len(arguments) == 1:
+            csid = ChecksumID(hexdigest=arguments[0])
+            self.__cancel_impl(csid)
+            return []
+        else:
+            raise ValueError('Must provide a message ID as the argument.')
 
 
 async def main(path: str, queue_name: str, port: Optional[int] = None) -> None:

@@ -265,6 +265,27 @@ class MessageQueue:
             else:
                 pass
 
+    def cancel(self, csid: ChecksumID) -> None:
+        """
+        Cancels a message in the queue.  You cannot cancel a message
+        that is being processed, has been archived or abandoned.
+
+        :param csid: The ID of the message to cancel.
+        :type csid: ChecksumID
+        :raises StateException: No message is in the QUEUED status.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''UPDATE msgq
+                            SET status_id=?
+                            WHERE when_deleted IS NULL AND csid=? AND status_id=?''',
+                           (Status.CANCELLED.value, str(csid), Status.QUEUED.value))
+            if cursor.rowcount < 1:
+                raise StateException(
+                    f'No message with ID [{csid}] found in QUEUED status.')
+            else:
+                pass
+
     def update_task_status(self, task_id: int, status: str):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
