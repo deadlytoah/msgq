@@ -206,15 +206,10 @@ class MessageQueue:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                '''SELECT * FROM
-                        (SELECT csid, payload, status_id FROM msgq
-                            WHERE when_deleted IS NULL AND status_id=?
-                            ORDER BY when_pushed)
-                   UNION
-                   SELECT csid, payload, status_id FROM
-                        (SELECT csid, payload, status_id, when_pushed, when_error
-                            FROM msgq WHERE when_deleted IS NULL AND status_id=? ORDER BY
-                            CASE WHEN when_error IS NULL THEN when_pushed ELSE when_error END)''',
+                '''SELECT csid, payload, status_id, when_pushed, when_error FROM msgq
+                    WHERE when_deleted IS NULL AND status_id in (?, ?)
+                    ORDER BY status_id desc,
+                        CASE WHEN when_error IS NULL THEN when_pushed ELSE when_error END''',
                 (Status.PROCESSING.value, Status.QUEUED.value))
             row = cursor.fetchone()
             if row is not None:
