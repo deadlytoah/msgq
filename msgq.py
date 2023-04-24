@@ -247,6 +247,29 @@ class MessageQueue:
             else:
                 pass
 
+    def fail(self, csid: ChecksumID, reason: str) -> None:
+        """
+        Fails a message.  The queue controller has failed delivering
+        this message.
+
+        :param csid: The ID of the message to fail.
+        :type csid: ChecksumID
+        :param reason: The reason for failure.
+        :type reason: str
+        :raises StateException: No message is in the PROCESSING status.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''UPDATE msgq
+                            SET status_id=?, last_error=?, when_error=datetime(\'now\'), num_attempts=num_attempts+1
+                            WHERE when_deleted IS NULL AND csid=? AND status_id=?''',
+                           (Status.QUEUED.value, reason, str(csid), Status.PROCESSING.value))
+            if cursor.rowcount < 1:
+                raise StateException(
+                    f'No message with ID [{csid}] found in PROCESSING status.')
+            else:
+                pass
+
     def update_task_status(self, task_id: int, status: str):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(

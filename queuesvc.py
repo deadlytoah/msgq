@@ -50,7 +50,20 @@ class QueueService(pyservice.Service):
                 'archive',
                 'Archives the given message in the queue that is in PROCESSING status.',
                 Timeout.DEFAULT,
-                Arguments(Argument('message ID', 'The ID of the message to archive.')),
+                Arguments(
+                    Argument('message ID', 'The ID of the message to archive.')),
+                'None',
+                'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
+            ))
+        self.register_command(
+            'fail',
+            self.fail,
+            Metadata(
+                'fail',
+                'Fails the given message in the queue that is in PROCESSING status.',
+                Timeout.DEFAULT,
+                Arguments(
+                    Argument('message ID', 'The ID of the message to fail.')),
                 'None',
                 'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
             ))
@@ -60,6 +73,9 @@ class QueueService(pyservice.Service):
 
     def __process_impl(self) -> Optional[tuple[ChecksumID, bytes]]:
         return self.message_queue.process()
+
+    def __fail_impl(self, csid: ChecksumID, reason: str) -> None:
+        self.message_queue.fail(csid, reason)
 
     def name(self) -> str:
         """
@@ -124,6 +140,27 @@ class QueueService(pyservice.Service):
             return []
         else:
             raise ValueError('Must provide a message ID as the argument.')
+
+    def fail(self, arguments: List[str]) -> List[str]:
+        """
+        Fails the given message in PROCESSING status in the queue.
+
+        :param args: An array containing the message ID and the reason for
+                     the failure.
+        :type args: List[str]
+        :return: An empty list.
+        :rtype: List[str]
+        :raises ValueError: The message ID argument is missing.
+        :raises MsgQStateException: There was no message in PROCESSING status.
+        """
+        if len(arguments) == 2:
+            csid = ChecksumID(hexdigest=arguments[0])
+            reason = arguments[1]
+            self.__fail_impl(csid, reason)
+            return []
+        else:
+            raise ValueError('''Must provide a message ID and the reason for
+                                the failure as the argument.''')
 
 
 async def main(path: str, queue_name: str, port: Optional[int] = None) -> None:
