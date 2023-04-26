@@ -79,6 +79,18 @@ class QueueService(pyservice.Service):
                 'None',
                 'ERROR_MSGQ_STATE: There was no message in QUEUED status.',
             ))
+        self.register_command(
+            'abandon',
+            self.abandon,
+            Metadata(
+                'abandon',
+                'Abandons the given message in the queue that is in PROCESSING status.',
+                Timeout.DEFAULT,
+                Arguments(
+                    Argument('message ID', 'The ID of the message to abandon.')),
+                'None',
+                'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
+            ))
 
     def __push_impl(self, payload: bytes) -> None:
         self.message_queue.push(payload)
@@ -91,6 +103,9 @@ class QueueService(pyservice.Service):
 
     def __cancel_impl(self, csid: ChecksumID) -> None:
         self.message_queue.cancel(csid)
+
+    def __abandon_impl(self, csid: ChecksumID) -> None:
+        self.message_queue.abandon(csid)
 
     def name(self) -> str:
         """
@@ -191,6 +206,24 @@ class QueueService(pyservice.Service):
         if len(arguments) == 1:
             csid = ChecksumID(hexdigest=arguments[0])
             self.__cancel_impl(csid)
+            return []
+        else:
+            raise ValueError('Must provide a message ID as the argument.')
+
+    def abandon(self, arguments: List[str]) -> List[str]:
+        """
+        Abandons the given message in PROCESSING status in the queue.
+
+        :param args: An array containing the message ID.
+        :type args: List[str]
+        :return: An empty list.
+        :rtype: List[str]
+        :raises ValueError: The message ID argument is missing.
+        :raises MsgQStateException: There was no message in PROCESSING status.
+        """
+        if len(arguments) == 1:
+            csid = ChecksumID(hexdigest=arguments[0])
+            self.__abandon_impl(csid)
             return []
         else:
             raise ValueError('Must provide a message ID as the argument.')
