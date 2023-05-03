@@ -306,26 +306,6 @@ class MessageQueue:
             else:
                 pass
 
-    def update_task_status(self, task_id: int, status: str):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                '''UPDATE tasks SET status=? WHERE id=?''', (status, task_id))
-
-    def update_task_last_run(self, task_id: int, timestamp: int):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                '''UPDATE tasks SET last_run=? WHERE id=?''', (timestamp, task_id))
-
-    def update_task_num_retries(self, task_id: int, num_retries: int):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                '''UPDATE tasks SET num_retries=? WHERE id=?''', (num_retries, task_id))
-
-    def update_task_last_result(self, task_id: int, result: str):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                '''UPDATE tasks SET last_result=? WHERE id=?''', (result, task_id))
-
     @staticmethod
     def __update_status(conn: sqlite3.Connection, csid: ChecksumID, status: Status) -> None:
         conn.execute(
