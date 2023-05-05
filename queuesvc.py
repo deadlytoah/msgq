@@ -1,12 +1,12 @@
 import argparse
 import asyncio
 import os
-import sys
+import sqlite3
 from os import environ, makedirs
 from typing import List, Optional
 
 import pyservice
-from msgq import ChecksumID, MessageQueue, QueueName
+from msgq import ChecksumID, Message, MessageQueue, QueueName, Status
 from pyservice.metadata import Argument, Arguments, Metadata, Timeout
 
 
@@ -91,6 +91,19 @@ class QueueService(pyservice.Service):
                 'None',
                 'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
             ))
+        self.register_command(
+            'find_by_status',
+            self.find_by_status,
+            Metadata(
+                'find_by_status',
+                'Finds messages in the queue in one of the given status.',
+                Timeout.DEFAULT,
+                Arguments.variable_length(
+                    Argument('status', 'The status of the messages to find.')),
+                '''Returns a list of messages in the queue in one of the given status,
+                   or an empty list if no messages were found.''',
+                'None',
+            ))
 
     def __push_impl(self, payload: bytes) -> None:
         self.message_queue.push(payload)
@@ -106,6 +119,9 @@ class QueueService(pyservice.Service):
 
     def __abandon_impl(self, csid: ChecksumID) -> None:
         self.message_queue.abandon(csid)
+
+    def __find_by_status_impl(self, status: List[Status]) -> List[Message]:
+        return self.message_queue.find_by_status(status)
 
     def name(self) -> str:
         """
@@ -228,6 +244,24 @@ class QueueService(pyservice.Service):
         else:
             raise ValueError('Must provide a message ID as the argument.')
 
+    def find_by_status(self, arguments: List[str]) -> List[str]:
+        """
+        Returns a list of messages in the queue in one of the given status,
+        or an empty list if no messages were found.
+
+        :param args: An array containing the status of the messages to find.
+        :type args: List[str]
+        :return: A list of messages in the queue in one of the given status,
+                 or an empty list if no messages were found.
+        :rtype: List[str]
+        """
+        if len(arguments) > 0:
+            status = [Status[status] for status in arguments]
+            messages = self.__find_by_status_impl(status)
+            return [message.as_json() for message in messages]
+        else:
+            raise ValueError('Must provide a status as the argument.')
+
 
 async def main(path: str, queue_name: str, port: Optional[int] = None) -> None:
     name = QueueName.validated(queue_name)
@@ -239,8 +273,11 @@ async def main(path: str, queue_name: str, port: Optional[int] = None) -> None:
 
 
 if __name__ == '__main__':
+    sqlite3.register_converter('DATETIME', sqlite3.converters['TIMESTAMP'])
+
     parser = argparse.ArgumentParser(description='Persistent Queue Service')
-    parser.add_argument('queue_name', type=str, help='The name of the queue.')
+    parser.add_argument('queue_name', type=str,
+                        help='The name of the queue.')
     parser.add_argument('-p', '--port', type=int,
                         help='The port to listen on.')
     args = parser.parse_args()

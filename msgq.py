@@ -1,8 +1,10 @@
 import hashlib
+import json
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from pyservice import ServiceException
 
@@ -142,6 +144,63 @@ class Status(Enum):
                    VALUES (?, ?)''', (status.value, status.name))
 
 
+@dataclass
+class Message:
+    """
+    Represents a message in the queue.
+
+    :param csid: The checksum ID of the message.
+    :type csid: ChecksumID
+    :param payload: The message payload.
+    :type payload: bytes
+    :param status: The status of the message.
+    :type status: Status
+    :param when_pushed: The date/time the message was pushed onto the queue.
+    :type when_pushed: datetime
+    :param when_deleted: The date/time the message was deleted from the queue.
+    :type when_deleted: datetime
+    :param when_delivered: The date/time the message was delivered.
+    :type when_delivered: datetime
+    :param when_error: The date/time the message encountered an error.
+    :type when_error: datetime
+    :param num_attempts: The number of times the message has been attempted.
+    :type num_attempts: int
+    :param last_error: The last error that occurred.
+    :type last_error: str
+    """
+
+    csid: ChecksumID
+    payload: bytes
+    status: Status
+    when_pushed: datetime
+    when_deleted: Optional[datetime]
+    when_delivered: Optional[datetime]
+    when_error: Optional[datetime]
+    num_attempts: int
+    last_error: Optional[str]
+
+    def as_json(self) -> str:
+        """
+        Returns the message as a JSON string.
+
+        :return: A JSON representing the message.
+        :rtype: str
+        """
+        assert isinstance(self.when_pushed, datetime)
+        dictionary = {
+            'csid': str(self.csid),
+            'payload': self.payload.decode('utf-8'),
+            'status': self.status.name,
+            'when_pushed': self.when_pushed.isoformat(),
+            'when_deleted': self.when_deleted.isoformat() if self.when_deleted is not None else None,
+            'when_delivered': self.when_delivered.isoformat() if self.when_delivered is not None else None,
+            'when_error': self.when_error.isoformat() if self.when_error is not None else None,
+            'num_attempts': self.num_attempts,
+            'last_error': self.last_error
+        }
+        return json.dumps(dictionary)
+
+
 class MessageQueue:
     """
     Represents a persistent message queue.
@@ -155,7 +214,7 @@ class MessageQueue:
 
     def __init__(self: 'MessageQueue', path: str, name: QueueName):
         self.db_path = f'{path}/{name}.db'
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             Status.create_table(conn)
             conn.execute('''CREATE TABLE IF NOT EXISTS msgq
                             (csid TEXT PRIMARY KEY,
@@ -178,7 +237,7 @@ class MessageQueue:
         :raises DatabaseConstraintException: The message already exists in
                                              the queue.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             when_pushed = datetime.now()
             csid = ChecksumID(payload)
             cursor = conn.cursor()
@@ -203,7 +262,7 @@ class MessageQueue:
                  messages to process.
         :rtype: Optional[tuple[ChecksumID, bytes]]
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 '''SELECT csid, payload, status_id, when_pushed, when_error FROM msgq
@@ -232,7 +291,7 @@ class MessageQueue:
         :type csid: ChecksumID
         :raises StateException: No message is in the PROCESSING status.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             cursor = conn.cursor()
             cursor.execute('UPDATE msgq SET status_id=? WHERE when_deleted IS NULL AND csid=? AND status_id=?',
                            (Status.ARCHIVED.value, str(csid), Status.PROCESSING.value))
@@ -253,7 +312,7 @@ class MessageQueue:
         :type reason: str
         :raises StateException: No message is in the PROCESSING status.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             cursor = conn.cursor()
             cursor.execute('''UPDATE msgq
                             SET status_id=?, last_error=?, when_error=datetime(\'now\'), num_attempts=num_attempts+1
@@ -274,7 +333,7 @@ class MessageQueue:
         :type csid: ChecksumID
         :raises StateException: No message is in the QUEUED status.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             cursor = conn.cursor()
             cursor.execute('''UPDATE msgq
                             SET status_id=?
@@ -294,7 +353,7 @@ class MessageQueue:
         :type csid: ChecksumID
         :raises StateException: No message is in the QUEUED status.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             cursor = conn.cursor()
             cursor.execute('''UPDATE msgq
                             SET status_id=?
@@ -305,6 +364,26 @@ class MessageQueue:
                     f'No message with ID [{csid}] found in PROCESSING status.')
             else:
                 pass
+
+    def find_by_status(self, status: List[Status]) -> List[Message]:
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
+            placeholders = ','.join(['?'] * len(status))
+            cursor = conn.cursor()
+            cursor.execute(
+                f'''SELECT csid, payload, status_id, when_pushed, when_deleted, when_delivered,
+                           when_error, num_attempts, last_error
+                    FROM msgq, status
+                    WHERE when_deleted IS NULL AND status_id=status.id AND status.name IN ({placeholders})''',
+                tuple([s.name for s in status]))
+            return [Message(ChecksumID(hexdigest=row[0]),
+                            row[1],
+                            status=Status(row[2]),
+                            when_pushed=row[3],
+                            when_deleted=row[4],
+                            when_delivered=row[5],
+                            when_error=row[6],
+                            num_attempts=row[7],
+                            last_error=row[8]) for row in cursor.fetchall()]
 
     @staticmethod
     def __update_status(conn: sqlite3.Connection, csid: ChecksumID, status: Status) -> None:
