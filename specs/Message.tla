@@ -1,4 +1,21 @@
 ------------------------------ MODULE Message ------------------------------
+(**************************************************************************)
+(* Persistent Message Queue Service                                       *)
+(* Copyright (C) 2023  Hee Shin                                           *)
+(*                                                                        *)
+(* This program is free software: you can redistribute it and/or modify   *)
+(* it under the terms of the GNU General Public License as published by   *)
+(* the Free Software Foundation, either version 3 of the License, or      *)
+(* (at your option) any later version.                                    *)
+(*                                                                        *)
+(* This program is distributed in the hope that it will be useful,        *)
+(* but WITHOUT ANY WARRANTY; without even the implied warranty of         *)
+(* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *)
+(* GNU General Public License for more details.                           *)
+(*                                                                        *)
+(* You should have received a copy of the GNU General Public License      *)
+(* along with this program.  If not, see <https://www.gnu.org/licenses/>. *)
+(**************************************************************************)
 EXTENDS FiniteSets, Integers
 
 CONSTANTS Messages  \* The set of unique messages.  They are unique by the hash
@@ -140,5 +157,5 @@ Next == \/ ReceiveMessage
 Spec == Init /\ [][Next]_vars
 =============================================================================
 \* Modification History
-\* Last modified Fri Apr 14 21:47:00 KST 2023 by hcs
+\* Last modified Wed May 10 13:26:17 KST 2023 by hcs
 \* Created Wed Apr 12 09:43:11 KST 2023 by hcs
