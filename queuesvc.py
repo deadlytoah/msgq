@@ -24,8 +24,9 @@ from os import environ, makedirs
 from typing import List, Optional
 
 import pyservice
-from msgq import ChecksumID, Message, MessageQueue, QueueName, Status
 from pyservice.metadata import Argument, Arguments, Metadata, Timeout
+
+from msgq import ChecksumID, Message, MessageQueue, QueueName, Status
 
 
 class QueueService(pyservice.Service):
@@ -123,6 +124,19 @@ class QueueService(pyservice.Service):
                    or an empty list if no messages were found.''',
                 'None',
             ))
+        self.register_command(
+            'find',
+            self.find,
+            Metadata(
+                'find',
+                'Finds a message in the queue with the given ID.',
+                Timeout.DEFAULT,
+                Arguments(
+                    Argument('ID', 'The ID of the message to find.')),
+                '''Returns the message in the queue with the given ID,
+                   or an error if no message was found.''',
+                'None',
+            ))
 
     def __push_impl(self, payload: bytes) -> None:
         self.message_queue.push(payload)
@@ -141,6 +155,9 @@ class QueueService(pyservice.Service):
 
     def __find_by_status_impl(self, status: List[Status]) -> List[Message]:
         return self.message_queue.find_by_status(status)
+
+    def __find_impl(self, id: str) -> Optional[Message]:
+        return self.message_queue.find(id)
 
     def name(self) -> str:
         """
@@ -283,6 +300,26 @@ class QueueService(pyservice.Service):
             return [message.as_json() for message in messages]
         else:
             raise ValueError('Must provide a status as the argument.')
+
+    def find(self, arguments: List[str]) -> List[str]:
+        """
+        Returns the message with the given message ID, or None if no message
+        was found with the given message ID.
+
+        :param args: An array containing the ID of the message to find.
+        :type args: List[str]
+        :return: The message with the given message ID, or None if no message
+                 was found with the given message ID.
+        :rtype: List[str]
+        """
+        if len(arguments) > 0:
+            id = arguments[0]
+            if message := self.__find_impl(id):
+                return [message.as_json()]
+            else:
+                return []
+        else:
+            raise ValueError('Must provide a message ID as the argument.')
 
 
 async def main(path: str, queue_name: str, port: Optional[int] = None) -> None:

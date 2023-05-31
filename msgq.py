@@ -405,6 +405,38 @@ class MessageQueue:
                             num_attempts=row[7],
                             last_error=row[8]) for row in cursor.fetchall()]
 
+    def find(self, id: str) -> Optional[Message]:
+        """
+        Finds the message with the given ID, or None if the message was not
+        found.
+
+        :param id: The ID to search for.
+        :type id: str
+        :return: The message with the given ID, or None if the message was not
+                 found.
+        :rtype: Optional[Message]
+        """
+        with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''SELECT csid, payload, status_id, when_pushed, when_deleted, when_delivered,
+                          when_error, num_attempts, last_error
+                   FROM msgq, status
+                   WHERE when_deleted IS NULL AND csid=?''',
+                (id,))
+            if row := cursor.fetchone():
+                return Message(ChecksumID(hexdigest=row[0]),
+                               row[1],
+                               status=Status(row[2]),
+                               when_pushed=row[3],
+                               when_deleted=row[4],
+                               when_delivered=row[5],
+                               when_error=row[6],
+                               num_attempts=row[7],
+                               last_error=row[8])
+            else:
+                return None
+
     @staticmethod
     def __update_status(conn: sqlite3.Connection, csid: ChecksumID, status: Status) -> None:
         conn.execute(
