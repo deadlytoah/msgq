@@ -105,7 +105,8 @@ class QueueService(pyservice.Service):
                 'Abandons the given message in the queue that is in PROCESSING status.',
                 Timeout.DEFAULT,
                 Arguments(
-                    Argument('message ID', 'The ID of the message to abandon.')),
+                    Argument('message ID', 'The ID of the message to abandon.'),
+                    Argument('reason', 'The reason for the failure.')),
                 'None',
                 'ERROR_MSGQ_STATE: There was no message in PROCESSING status.',
             ))
@@ -135,8 +136,8 @@ class QueueService(pyservice.Service):
     def __cancel_impl(self, csid: ChecksumID) -> None:
         self.message_queue.cancel(csid)
 
-    def __abandon_impl(self, csid: ChecksumID) -> None:
-        self.message_queue.abandon(csid)
+    def __abandon_impl(self, csid: ChecksumID, reason: str) -> None:
+        self.message_queue.abandon(csid, reason)
 
     def __find_by_status_impl(self, status: List[Status]) -> List[Message]:
         return self.message_queue.find_by_status(status)
@@ -248,19 +249,22 @@ class QueueService(pyservice.Service):
         """
         Abandons the given message in PROCESSING status in the queue.
 
-        :param args: An array containing the message ID.
+        :param args: An array containing the message ID and the reason for
+                     the failure.
         :type args: List[str]
         :return: An empty list.
         :rtype: List[str]
         :raises ValueError: The message ID argument is missing.
         :raises MsgQStateException: There was no message in PROCESSING status.
         """
-        if len(arguments) == 1:
+        if len(arguments) == 2:
             csid = ChecksumID(hexdigest=arguments[0])
-            self.__abandon_impl(csid)
+            reason = arguments[1]
+            self.__abandon_impl(csid, reason)
             return []
         else:
-            raise ValueError('Must provide a message ID as the argument.')
+            raise ValueError('''Must provide a message ID and the reason for
+                                the failure as the argument.''')
 
     def find_by_status(self, arguments: List[str]) -> List[str]:
         """

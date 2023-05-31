@@ -363,20 +363,22 @@ class MessageQueue:
             else:
                 pass
 
-    def abandon(self, csid: ChecksumID) -> None:
+    def abandon(self, csid: ChecksumID, reason: str) -> None:
         """
         Abandons a message in the PROCESSING status.
 
         :param csid: The ID of the message to abandon.
         :type csid: ChecksumID
+        :param reason: The reason for abandoning the message.
+        :type reason: str
         :raises StateException: No message is in the QUEUED status.
         """
         with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             cursor = conn.cursor()
             cursor.execute('''UPDATE msgq
-                            SET status_id=?
+                            SET status_id=?, last_error=?, when_error=datetime(\'now\'), num_attempts=num_attempts+1
                             WHERE when_deleted IS NULL AND csid=? AND status_id=?''',
-                           (Status.ABANDONED.value, str(csid), Status.PROCESSING.value))
+                           (Status.ABANDONED.value, reason, str(csid), Status.PROCESSING.value))
             if cursor.rowcount < 1:
                 raise StateException(
                     f'No message with ID [{csid}] found in PROCESSING status.')
