@@ -311,7 +311,8 @@ class MessageQueue:
         """
         with sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             cursor = conn.cursor()
-            cursor.execute('UPDATE msgq SET status_id=? WHERE when_deleted IS NULL AND csid=? AND status_id=?',
+            cursor.execute('''UPDATE msgq SET status_id=?, when_delivered=datetime(\'now\')
+                              WHERE when_deleted IS NULL AND csid=? AND status_id=?''',
                            (Status.ARCHIVED.value, str(csid), Status.PROCESSING.value))
             if cursor.rowcount < 1:
                 raise StateException(
